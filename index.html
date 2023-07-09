@@ -1,0 +1,292 @@
+
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>음악 파일 파형 및 이퀄라이저</title>
+    <style>
+        canvas {
+            border: 1px solid #000;
+        }
+
+        .slider {
+            width: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <script>
+
+    </script>
+    <input type="file" id="audioFile" accept=".mp3" />
+    <canvas id="waveformCanvas" width="800px"></canvas>
+    <canvas id="waveformCanvas2" width="800px"></canvas>
+    <div>
+        <label for="slider1">Band 1</label>
+        <input type="range" id="slider1" class="slider" min="0" max="4" step="0.01" value="2" />
+    </div>
+    <div>
+        <label for="slider2">Band 2</label>
+        <input type="range" id="slider2" class="slider" min="0" max="4" step="0.01" value="2" />
+    </div>
+    <div>
+        <label for="slider3">Band 3</label>
+        <input type="range" id="slider3" class="slider" min="0" max="4" step="0.01" value="2" />
+    </div>
+    <div>
+        <label for="slider4">Band 4</label>
+        <input type="range" id="slider4" class="slider" min="0" max="4" step="0.01" value="2" />
+    </div>
+    <div>
+        <label for="slider5">Band 5</label>
+        <input type="range" id="slider5" class="slider" min="0" max="4" step="0.01" value="2" />
+    </div>
+    <button id="playButton">재생</button>
+
+    <script>
+        let audioContext;
+        let source;
+        let analyser;
+        let dataArray;
+        let canvas;
+        let canvasContext;
+        let slider1;
+        let slider2;
+        let slider3;
+        let slider4;
+        let slider5;
+
+        let filterNodes
+        // let analyser
+
+        // 파일 선택 시 실행되는 함수
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            const reader = new FileReader();
+
+            reader.onload = function (event) {
+                const arrayBuffer = event.target.result;
+                const copiedArrayBuffer = new ArrayBuffer(arrayBuffer.byteLength);
+                const copiedDataView = new Uint8Array(copiedArrayBuffer);
+                const originalDataView = new Uint8Array(arrayBuffer);
+                copiedDataView.set(originalDataView);
+
+
+
+
+                // Web Audio API를 사용하여 파형을 그리고 이퀄라이저를 적용하는 함수 호출
+                drawWaveform(arrayBuffer);
+                applyEqualizer(copiedArrayBuffer);
+            };
+
+            reader.readAsArrayBuffer(file);
+        }
+
+        // Web Audio API를 사용하여 파형을 그리는 함수
+        function drawWaveform(arrayBuffer) {
+            // AudioContext 생성
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+            // ArrayBuffer를 AudioBuffer로 변환
+            audioContext.decodeAudioData(arrayBuffer, function (buffer) {
+                // 파형을 그리는 캔버스 설정
+                canvas = document.getElementById('waveformCanvas');
+                canvasContext = canvas.getContext('2d');
+                const width = canvas.width;
+                const height = canvas.height;
+                const data = buffer.getChannelData(0);
+                const step = Math.ceil(data.length / width);
+                const amp = height / 2;
+
+
+                canvasContext.strokeStyle = 'pink';
+                canvasContext.clearRect(0, 0, width, height);
+                canvasContext.beginPath();
+                canvasContext.moveTo(0, amp);
+
+                for (let i = 0; i < width; i++) {
+                    let min = 1.0;
+                    let max = -1.0;
+
+                    for (let j = 0; j < step; j++) {
+                        const datum = data[(i * step) + j];
+                        if (datum < min) min = datum;
+                        if (datum > max) max = datum;
+                    }
+
+                    canvasContext.lineTo(i, (1 + min) * amp);
+                    canvasContext.lineTo(i, (1 + max) * amp);
+                }
+
+                canvasContext.lineTo(width, amp);
+                canvasContext.stroke();
+            });
+        }
+
+// 이퀄라이저를 적용하는 함수
+function applyEqualizer(arrayBuffer) {
+    // 이퀄라이저 밴드 슬라이더 요소들 가져오기
+    slider1 = document.getElementById('slider1');
+    slider2 = document.getElementById('slider2');
+    slider3 = document.getElementById('slider3');
+    slider4 = document.getElementById('slider4');
+    slider5 = document.getElementById('slider5');
+
+    // 오디오 소스 생성
+    source = audioContext.createBufferSource();
+
+    // ArrayBuffer를 복제하여 새로운 ArrayBuffer 생성
+    const copiedArrayBuffer = arrayBuffer.slice(0);
+
+    // ArrayBuffer를 AudioBuffer로 변환
+    audioContext.decodeAudioData(copiedArrayBuffer, function (buffer) {
+        // 오디오 소스에 버퍼 연결
+        console.log(buffer)
+        source.buffer = buffer;
+
+        analyser = audioContext.createAnalyser();
+        source.connect(analyser);
+        // analyser.connect(audioContext.destination);
+        analyser.fftSize = 2048;
+
+        // 이퀄라이저 노드 생성
+        const equalizerNode = createEqualizerNode();
+
+        // 오디오 소스와 이퀄라이저 노드 연결
+        source.connect(equalizerNode);
+        equalizerNode.connect(audioContext.destination);
+        
+
+        // 슬라이더 값에 따라 이퀄라이저 설정
+        slider1.addEventListener('input', updateEqualizer);
+        slider2.addEventListener('input', updateEqualizer);
+        slider3.addEventListener('input', updateEqualizer);
+        slider4.addEventListener('input', updateEqualizer);
+        slider5.addEventListener('input', updateEqualizer);
+
+        // 오디오 소스 재생
+        source.start();
+        setInterval(drawWaveform2, 1000/30)
+    });
+}
+
+// 이퀄라이저 노드 생성
+function createEqualizerNode() {
+    const equalizerNode = audioContext.createGain();
+    filterNodes = [];
+
+    const bands = [100, 200, 400, 800, 1600];
+    const defaultGain = 1;
+
+    for (let i = 0; i < bands.length; i++) {
+        const frequency = bands[i];
+        const gain = audioContext.createGain();
+        const filter = audioContext.createBiquadFilter();
+        // filter.type = 'peaking';
+
+        if (!i) filter.type = 'lowshelf';
+        else if (i == bands.length - 1) filter.type = 'highshelf';
+        else filter.type = 'peaking';
+
+
+        filter.frequency.value = frequency;
+        filter.Q.value = 1; // Q 값을 설정해야합니다.
+        filter.gain.value = defaultGain;
+
+        equalizerNode.connect(filter);
+        filter.connect(gain);
+        gain.connect(audioContext.destination);
+
+        filterNodes.push(filter);
+    }
+
+    return equalizerNode;
+}
+
+
+// 이퀄라이저 설정 업데이트
+function updateEqualizer() {
+    console.log('[updateEqualizer]')
+    if (source && audioContext.state === 'running') {
+        const gain1 = Math.pow(10, parseFloat(slider1.value)-2);
+        const gain2 = Math.pow(10, parseFloat(slider2.value)-2);
+        const gain3 = Math.pow(10, parseFloat(slider3.value)-2);
+        const gain4 = Math.pow(10, parseFloat(slider4.value)-2);
+        const gain5 = Math.pow(10, parseFloat(slider5.value)-2);
+
+        const gains = [gain1, gain2, gain3, gain4, gain5];
+
+        // const filterNodes = source._connections[0].input._connections;
+
+
+        for (let i = 0; i < filterNodes.length; i++) {
+            const filterNode = filterNodes[i];
+            filterNode.gain.value = gains[i];
+        }
+    }
+}
+
+
+
+
+
+
+
+    // 재생 버튼 클릭 시 실행되는 함수
+    function togglePlayback() {
+        if (source && audioContext.state === 'suspended') {
+            audioContext.resume(); // 일시 정지된 오디오 컨텍스트를 재개하여 재생을 이어감
+        } else if (source && audioContext.state === 'running') {
+            audioContext.suspend(); // 재생 중인 오디오 컨텍스트를 일시 정지하여 재생을 멈춤
+        }
+    }
+
+    // 파일 선택 시 handleFileSelect 함수 호출
+    const fileInput = document.getElementById('audioFile');
+    fileInput.addEventListener('change', handleFileSelect);
+
+    // 재생 버튼 클릭 시 togglePlayback 함수 호출
+    const playButton = document.getElementById('playButton');
+    playButton.addEventListener('click', togglePlayback);
+
+function drawWaveform2(arrayBuffer) {
+            // audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            // audioContext.decodeAudioData(arrayBuffer, function (buffer) {
+                const canvas2 = document.getElementById('waveformCanvas2');
+                const canvasContext = canvas2.getContext('2d');
+                const width = canvas2.width;
+                const height = canvas2.height;
+
+
+
+                
+                const bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+
+                // requestAnimationFrame(drawWaveform);
+                analyser.getByteTimeDomainData(dataArray);
+                canvasContext.clearRect(0, 0, width, height);
+                canvasContext.beginPath();
+                const sliceWidth = width * 1.0 / bufferLength;
+                let x = 0;
+                for (let i = 0; i < bufferLength; i++) {
+                    const v = dataArray[i] / 128.0;
+                    const y = v * height / 2;
+                    if (i === 0) {
+                        canvasContext.moveTo(x, y);
+                    } else {
+                        canvasContext.lineTo(x, y);
+                    }
+                    x += sliceWidth;
+                }
+                canvasContext.lineTo(canvas.width, canvas.height / 2);
+                canvasContext.stroke();
+            // });
+        }
+
+       
+    </script>
+</body>
+
+</html>
