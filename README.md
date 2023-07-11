@@ -1,5 +1,4 @@
 # [Audio-Equalizer](https://luprwest.github.io/Audio-Equalizer/)
 
-* 음악 파일 파형 그리기
-* 실시간 오디오 파형 그리기
+* 오디오 파형 그리기(시간 스케일 넓은거랑 좁은거)
 * 이퀄라이저 (low/high/peaking)
